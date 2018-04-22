@@ -1,7 +1,8 @@
 // volumerenderer.cpp : Defines the entry point for the console application.
 //
-#include "stdafx.h"
 #include "volumerenderer.h"
+#include "imgui/imgui.h"
+#include "imgui/imgui_impl_sdl_gl3.h"
 
 SDL_Window* window_; 
 void SetupWindow()
@@ -12,11 +13,12 @@ void SetupWindow()
 	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
-	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
+	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
 
 	window_ = SDL_CreateWindow("Volume texture visualizer",
 		SDL_WINDOWPOS_UNDEFINED,
@@ -27,6 +29,11 @@ void SetupWindow()
 
 	auto context = SDL_GL_CreateContext(window_);
 	glewInit();
+
+	auto imguiContext = ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO();
+	ImGui_ImplSdlGL3_Init(window_);
+	ImGui::StyleColorsDark();
 }
 
 std::string GetCompileLog(GLuint shader) {
@@ -131,9 +138,6 @@ void CreateVertexBuffers() {
 
 void SetupGLState()
 {
-	GLuint vertexArray;
-	glGenVertexArrays(1, &vertexArray);
-	glBindVertexArray(vertexArray);
 
 	CompileAndLinkShaders();
 	CreateVertexBuffers();
@@ -151,11 +155,19 @@ void SetupGLState()
 	glVertexAttribPointer(positionLoc, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
 }
 
+bool demoWindowOpen_ = true;
 void Render() {
+	ImGui_ImplSdlGL3_NewFrame(window_);
+
 	glClearColor(0.15f, 0.15f, 0.20f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, 0);
+
+	ImGui::ShowDemoWindow(&demoWindowOpen_);
+	ImGui::Render();
+	ImGui_ImplSdlGL3_RenderDrawData(ImGui::GetDrawData());
+
 	SDL_GL_SwapWindow(window_);
 }
 
@@ -163,7 +175,7 @@ void MessagePump() {
 	SDL_Event event;
 	while (SDL_PollEvent(&event))
 	{
-		//imgui->ProcessEvent(&event);
+		ImGui_ImplSdlGL3_ProcessEvent(&event);
 		switch (event.type)
 		{
 		case SDL_QUIT:
