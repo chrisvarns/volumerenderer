@@ -13,7 +13,15 @@ glm::mat4 model_;
 
 float viewAngleV_ = 0.0f;
 float viewAngleH_ = 0.0f;
-float controls_cameraSensitivity_ = 0.1f;
+
+struct {
+	bool showAppAbout = false;
+	float cameraSensitivity = 0.1f;
+	float cameraFov = 60.0f;
+	glm::vec4 backgroundColor = glm::vec4(0.15f, 0.15f, 0.20f, 1.0f);
+} imguiSettings_;
+
+glm::vec2 windowSize_ = glm::vec2(1280, 720);
 
 void SetupWindow()
 {
@@ -33,7 +41,7 @@ void SetupWindow()
 	window_ = SDL_CreateWindow("Volume texture visualizer",
 		SDL_WINDOWPOS_UNDEFINED,
 		SDL_WINDOWPOS_UNDEFINED,
-		1280, 720,
+		windowSize_.x, windowSize_.y,
 		SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
 	assert(window_);
 
@@ -147,6 +155,24 @@ void CreateVertexBuffers() {
 	glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVerts), cubeVerts, GL_STATIC_DRAW);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer_);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(cubeIndices), cubeIndices, GL_STATIC_DRAW);
+
+	auto positionLoc = glGetAttribLocation(program_, "position");
+	glEnableVertexAttribArray(positionLoc);
+	glVertexAttribPointer(positionLoc, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
+}
+
+void PostResizeGlSetup() {
+	auto aspect = windowSize_.x / windowSize_.y;
+	projection_ = glm::perspective(glm::radians(imguiSettings_.cameraFov), aspect, 1.0f, 10.0f);
+
+	glViewport(0, 0, windowSize_.x, windowSize_.y);
+}
+
+void HandleWindowResize(int width, int height) {
+	windowSize_.x = width;
+	windowSize_.y = height;
+
+	PostResizeGlSetup();
 }
 
 void SetupGLState()
@@ -154,18 +180,69 @@ void SetupGLState()
 	CompileAndLinkShaders();
 	CreateVertexBuffers();
 
-	projection_ = glm::perspective(30.f, 1280.0f / 720, 1.0f, 10.0f);
-
-	auto positionLoc = glGetAttribLocation(program_, "position");
-	glEnableVertexAttribArray(positionLoc);
-	glVertexAttribPointer(positionLoc, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
+	PostResizeGlSetup();
 }
 
-bool demoWindowOpen_ = true;
+void RenderMenus()
+{
+	ImGui::SetNextWindowPos(ImVec2(5, 5), ImGuiCond_Always, ImVec2(0, 0));
+	if (ImGui::Begin("Window", nullptr,
+		ImGuiWindowFlags_NoTitleBar |
+		ImGuiWindowFlags_MenuBar |
+		ImGuiWindowFlags_NoMove |
+		ImGuiWindowFlags_NoCollapse |
+		ImGuiWindowFlags_AlwaysAutoResize)
+	) {
+		if (ImGui::BeginMenuBar())
+		{
+			if (ImGui::BeginMenu("Menu"))
+			{
+				ImGui::EndMenu();
+			}
+			if (ImGui::BeginMenu("Help"))
+			{
+				ImGui::MenuItem("About", NULL, &imguiSettings_.showAppAbout);
+				ImGui::EndMenu();
+			}
+			ImGui::EndMenuBar();
+		}
+
+		if (ImGui::CollapsingHeader("Camera Controls"))
+		{
+			ImGui::SliderFloat("Mouse sensitivity", &imguiSettings_.cameraSensitivity, 0.01f, 0.5f);
+			if (ImGui::SliderFloat("FOV", &imguiSettings_.cameraFov, 10.0f, 150.0f))
+			{
+				PostResizeGlSetup();
+			}
+		}
+
+		if (ImGui::CollapsingHeader("Pretty"))
+		{
+			ImGui::ColorPicker3("Background Color", (float*)&imguiSettings_.backgroundColor);
+		}
+
+		if (imguiSettings_.showAppAbout)
+		{
+			ImGui::Begin("About", &imguiSettings_.showAppAbout, ImGuiWindowFlags_AlwaysAutoResize);
+			ImGui::Text("Volume Texture Visualizer", ImGui::GetVersion());
+			ImGui::Separator();
+			ImGui::Text("By Chris Varnsverry.");
+			ImGui::End();
+		}
+
+		ImGui::End();
+	}
+}
+
 void Render() {
 	ImGui_ImplSdlGL3_NewFrame(window_);
 
-	glClearColor(0.15f, 0.15f, 0.20f, 1.0f);
+	glClearColor(
+		imguiSettings_.backgroundColor.r,
+		imguiSettings_.backgroundColor.g,
+		imguiSettings_.backgroundColor.b,
+		imguiSettings_.backgroundColor.a
+	);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnable(GL_DEPTH_TEST);
 
@@ -183,11 +260,23 @@ void Render() {
 
 	glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, 0);
 
-	//ImGui::ShowDemoWindow(&demoWindowOpen_);
+	ImGui::ShowDemoWindow(nullptr);
+	RenderMenus();
 	ImGui::Render();
 	ImGui_ImplSdlGL3_RenderDrawData(ImGui::GetDrawData());
 
 	SDL_GL_SwapWindow(window_);
+}
+
+void HandleWindowEvent(const SDL_Event& event) {
+	switch (event.window.event)
+	{
+	case SDL_WINDOWEVENT_RESIZED:
+		HandleWindowResize(event.window.data1, event.window.data2);
+		break;
+	default:
+		break;
+	}
 }
 
 void MessagePump() {
@@ -203,7 +292,7 @@ void MessagePump() {
 			break;
 
 		case SDL_WINDOWEVENT:
-			//HandleWindowEvent(event);
+			HandleWindowEvent(event);
 			break;
 
 		case SDL_MOUSEBUTTONDOWN:
@@ -215,8 +304,8 @@ void MessagePump() {
 		case SDL_MOUSEMOTION:
 			if (!io.WantCaptureMouse && SDL_GetRelativeMouseMode())
 			{
-				viewAngleH_ += controls_cameraSensitivity_ * event.motion.xrel;
-				viewAngleV_ += controls_cameraSensitivity_ * event.motion.yrel;
+				viewAngleH_ += imguiSettings_.cameraSensitivity * event.motion.xrel;
+				viewAngleV_ += imguiSettings_.cameraSensitivity * event.motion.yrel;
 				viewAngleV_ = glm::clamp(viewAngleV_, -85.f, 85.f);
 			}
 			break;
