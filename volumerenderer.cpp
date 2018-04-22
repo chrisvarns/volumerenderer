@@ -10,8 +10,10 @@ GLint positionLoc_;
 GLuint cubeVertexBuffer_;
 GLuint cubeIndexBuffer_;
 GLuint edgesVertexBuffer_;
-GLuint pointBuffer_;
-int numPoints_;
+GLuint intersectionPointBuffer_;
+GLuint intersectionTriangleBuffer_;
+int numIntersectionPoints_;
+int numIntersectionTriangles_;
 glm::mat4 projection_;
 glm::mat4 model_;
 
@@ -22,8 +24,8 @@ struct {
 	bool showAppAbout = false;
 	bool drawCube = true;
 	bool drawEdges = false;
-	bool drawIntersections = false;
-	int numIntersectionsToDraw = 1;
+	bool drawIntersectionPoints = false;
+	bool drawIntersectionGeometry = false;
 	uint32_t cubeNumSlices = 10;
 	float cameraSensitivity = 0.1f;
 	float cameraFov = 60.0f;
@@ -197,7 +199,8 @@ void CreateVertexBuffers() {
 	glBindBuffer(GL_ARRAY_BUFFER, edgesVertexBuffer_);
 	glBufferData(GL_ARRAY_BUFFER, edgeVerts_.size() * sizeof(*edgeVerts_.data()), edgeVerts_.data(), GL_DYNAMIC_DRAW);
 
-	glGenBuffers(1, &pointBuffer_);
+	glGenBuffers(1, &intersectionPointBuffer_);
+	glGenBuffers(1, &intersectionTriangleBuffer_);
 
 	positionLoc_ = glGetAttribLocation(program_, "position");
 	glEnableVertexAttribArray(positionLoc_);
@@ -267,8 +270,8 @@ void RenderMenus()
 		{
 			ImGui::Checkbox("Cube", &imguiSettings_.drawCube);
 			ImGui::Checkbox("Edges", &imguiSettings_.drawEdges);
-			ImGui::Checkbox("Plane intersections", &imguiSettings_.drawIntersections);
-			ImGui::InputInt("Number of intersections to draw", &imguiSettings_.numIntersectionsToDraw);
+			ImGui::Checkbox("Intersection points", &imguiSettings_.drawIntersectionPoints);
+			ImGui::Checkbox("Intersection geometry", &imguiSettings_.drawIntersectionGeometry);
 		}
 
 		if (imguiSettings_.showAppAbout)
@@ -314,6 +317,7 @@ void CalculateCubeSlices(glm::mat4 modelView) {
 	float offsetToFirstPlane = sliceDiff / 2;
 
 	std::vector<glm::vec3> intersectionPoints;
+	std::vector<glm::vec3> intersectionTriangles;
 	glm::vec3 n = glm::vec3(0.0f, 0.0f, 1.0f);
 	float d = depthRange.y + offsetToFirstPlane;
 
@@ -329,6 +333,7 @@ void CalculateCubeSlices(glm::mat4 modelView) {
 			}
 		}
 
+		// Find center point
 		glm::vec2 centerPoint = glm::vec2(0.0f);
 		for (auto& point : intersectionPointsThisPlane)
 		{
@@ -336,23 +341,39 @@ void CalculateCubeSlices(glm::mat4 modelView) {
 		}
 		centerPoint /= intersectionPointsThisPlane.size();
 
+		// Sort them in clockwise(?) order
 		std::sort(intersectionPointsThisPlane.begin(), intersectionPointsThisPlane.end(),
 			[centerPoint](const glm::vec3& a, const glm::vec3& b) -> bool
 		{
 			auto posX = glm::vec2(1.0f, 0.0f);
 			auto angleA = glm::orientedAngle(glm::normalize(glm::vec2(a) - centerPoint), posX);
 			auto angleB = glm::orientedAngle(glm::normalize(glm::vec2(b) - centerPoint), posX);
-			return angleA < angleB;
+			return angleA > angleB;
 		});
+
+		// Add triangles for this plane
+		for (int i = 0; i < intersectionPointsThisPlane.size(); ++i)
+		{
+			auto& current = intersectionPointsThisPlane[i];
+			auto& next = intersectionPointsThisPlane[(i + 1) % intersectionPointsThisPlane.size()];
+			intersectionTriangles.push_back(current);
+			intersectionTriangles.push_back(next);
+			intersectionTriangles.push_back(glm::vec3(centerPoint, d));
+		}
 
 		intersectionPoints.insert(intersectionPoints.end(), intersectionPointsThisPlane.begin(), intersectionPointsThisPlane.end());
 		d += sliceDiff;
 	}
 
 	// Update the points buffer
-	glBindBuffer(GL_ARRAY_BUFFER, pointBuffer_);
+	glBindBuffer(GL_ARRAY_BUFFER, intersectionPointBuffer_);
 	glBufferData(GL_ARRAY_BUFFER, intersectionPoints.size() * sizeof(*intersectionPoints.data()), intersectionPoints.data(), GL_DYNAMIC_DRAW);
-	numPoints_ = intersectionPoints.size();
+	numIntersectionPoints_ = intersectionPoints.size();
+
+	// Update the triangles buffer
+	glBindBuffer(GL_ARRAY_BUFFER, intersectionTriangleBuffer_);
+	glBufferData(GL_ARRAY_BUFFER, intersectionTriangles.size() * sizeof(*intersectionTriangles.data()), intersectionTriangles.data(), GL_DYNAMIC_DRAW);
+	numIntersectionTriangles_ = intersectionTriangles.size();
 }
 
 void Render() {
@@ -378,25 +399,33 @@ void Render() {
 	CalculateCubeSlices(modelView);
 
 	auto mvp = projection_ * modelView;
-	glUniformMatrix4fv(mvpLoc_, 1, false, (GLfloat*)&mvp);
 
 	if (imguiSettings_.drawCube) {
 		glBindBuffer(GL_ARRAY_BUFFER, cubeVertexBuffer_);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeIndexBuffer_);
 		glVertexAttribPointer(positionLoc_, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
+		glUniformMatrix4fv(mvpLoc_, 1, false, (GLfloat*)&mvp);
 		glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, 0);
 	}
 	if (imguiSettings_.drawEdges) {
 		glBindBuffer(GL_ARRAY_BUFFER, edgesVertexBuffer_);
 		glVertexAttribPointer(positionLoc_, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
+		glUniformMatrix4fv(mvpLoc_, 1, false, (GLfloat*)&mvp);
 		glDrawArrays(GL_LINES, 0, 24);
 	}
-	if (imguiSettings_.drawIntersections) {
-		glBindBuffer(GL_ARRAY_BUFFER, pointBuffer_);
+	if (imguiSettings_.drawIntersectionGeometry) {
+		glBindBuffer(GL_ARRAY_BUFFER, intersectionTriangleBuffer_);
 		glVertexAttribPointer(positionLoc_, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
 		glUniformMatrix4fv(mvpLoc_, 1, false, (GLfloat*)&projection_);
 		glPointSize(10.0f);
-		glDrawArrays(GL_POINTS, 0, glm::min(numPoints_, imguiSettings_.numIntersectionsToDraw));
+		glDrawArrays(GL_TRIANGLES, 0, numIntersectionTriangles_);
+	}
+	if (imguiSettings_.drawIntersectionPoints) {
+		glBindBuffer(GL_ARRAY_BUFFER, intersectionPointBuffer_);
+		glVertexAttribPointer(positionLoc_, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
+		glUniformMatrix4fv(mvpLoc_, 1, false, (GLfloat*)&projection_);
+		glPointSize(10.0f);
+		glDrawArrays(GL_POINTS, 0, numIntersectionPoints_);
 	}
 
 	ImGui::ShowDemoWindow(nullptr);
