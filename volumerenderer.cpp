@@ -1,10 +1,20 @@
 // volumerenderer.cpp : Defines the entry point for the console application.
 //
-#include "volumerenderer.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_sdl_gl3.h"
 
-SDL_Window* window_; 
+SDL_Window* window_;
+GLuint program_;
+GLint mvpLoc_;
+GLuint vertexBuffer_;
+GLuint indexBuffer_;
+glm::mat4 projection_;
+glm::mat4 model_;
+
+float viewAngleV_ = 0.0f;
+float viewAngleH_ = 0.0f;
+float controls_cameraSensitivity_ = 0.1f;
+
 void SetupWindow()
 {
 	// Setup SDL
@@ -44,23 +54,25 @@ std::string GetCompileLog(GLuint shader) {
 	return log;
 }
 
-GLuint program_;
 void CompileAndLinkShaders()
 {
 	std::string vertexShaderStr =
 		"#version 330 core\n"
 		"layout(location = 0) in vec3 position;\n"
+		"out vec3 vertColor;\n"
 		"uniform mat4 mvp;\n"
 		"void main () { \n"
 		"	gl_Position = mvp * vec4(position, 1);\n"
+		"	vertColor = (position + 1)/2;\n"
 		"}"
 		;
 
 	std::string fragmentShaderStr =
 		"#version 330 core\n"
+		"in vec3 vertColor;\n"
 		"out vec3 color; \n"
 		"void main() { \n"
-		"	color = vec3(1, 0, 0);\n"
+		"	color = vertColor;\n"
 		"}"
 		;
 
@@ -100,7 +112,10 @@ void CompileAndLinkShaders()
 	if (linkStatus != GL_TRUE) {
 		assert(false);
 	}
+
 	glUseProgram(program_);
+
+	mvpLoc_ = glGetUniformLocation(program_, "mvp");
 }
 
 glm::vec3 cubeVerts[] = {
@@ -123,8 +138,6 @@ uint16_t cubeIndices[] = {
 	1, 4, 0, 1, 5, 4 // bottom face
 };
 
-GLuint vertexBuffer_;
-GLuint indexBuffer_;
 void CreateVertexBuffers() {
 
 	glGenBuffers(1, &vertexBuffer_);
@@ -138,17 +151,10 @@ void CreateVertexBuffers() {
 
 void SetupGLState()
 {
-
 	CompileAndLinkShaders();
 	CreateVertexBuffers();
 
-	auto projection = glm::perspective(90.0f, 1280.0f / 720, 1.0f, 100.0f);
-	auto view = glm::lookAt(glm::vec3(0.0f, 0.0f, 2.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-	auto translate = glm::translate(glm::mat4(), glm::vec3(0.0f, 0.0f, -1.0f));
-	auto mvp = projection * view * translate;
-
-	auto mvpLoc = glGetUniformLocation(program_, "mvp");
-	glUniformMatrix4fv(mvpLoc, 1, false, (GLfloat*)&mvp);
+	projection_ = glm::perspective(30.f, 1280.0f / 720, 1.0f, 10.0f);
 
 	auto positionLoc = glGetAttribLocation(program_, "position");
 	glEnableVertexAttribArray(positionLoc);
@@ -160,11 +166,24 @@ void Render() {
 	ImGui_ImplSdlGL3_NewFrame(window_);
 
 	glClearColor(0.15f, 0.15f, 0.20f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glEnable(GL_DEPTH_TEST);
+
+
+	auto viewPos = glm::vec3(0.0f, 0.0f, 2.0f);
+	viewPos = glm::rotate(viewPos, glm::radians(viewAngleV_), glm::vec3(1.0f, 0.0f, 0.0f));
+	viewPos = glm::rotate(viewPos, glm::radians(viewAngleH_), glm::vec3(0.0f, 1.0f, 0.0f));
+	
+	auto view = glm::lookAt(viewPos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+	auto scale = glm::scale(glm::mat4(), glm::vec3(0.5f));
+	auto translate = glm::translate(glm::mat4(), glm::vec3(0.0f, 0.0f, 0.0f));
+	auto mvp = projection_ * view * translate * scale;
+	glUniformMatrix4fv(mvpLoc_, 1, false, (GLfloat*)&mvp);
 
 	glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, 0);
 
-	ImGui::ShowDemoWindow(&demoWindowOpen_);
+	//ImGui::ShowDemoWindow(&demoWindowOpen_);
 	ImGui::Render();
 	ImGui_ImplSdlGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -176,6 +195,7 @@ void MessagePump() {
 	while (SDL_PollEvent(&event))
 	{
 		ImGui_ImplSdlGL3_ProcessEvent(&event);
+		auto& io = ImGui::GetIO();
 		switch (event.type)
 		{
 		case SDL_QUIT:
@@ -186,19 +206,20 @@ void MessagePump() {
 			//HandleWindowEvent(event);
 			break;
 
-		/*case SDL_MOUSEBUTTONDOWN:
-			if (!io.WantCaptureMouse && event.button.button == SDL_BUTTON_RIGHT) SDL_SetRelativeMouseMode(SDL_TRUE);
+		case SDL_MOUSEBUTTONDOWN:
+			if (!io.WantCaptureMouse && event.button.button == SDL_BUTTON_LEFT) SDL_SetRelativeMouseMode(SDL_TRUE);
 			break;
 		case SDL_MOUSEBUTTONUP:
-			if (!io.WantCaptureMouse && event.button.button == SDL_BUTTON_RIGHT) SDL_SetRelativeMouseMode(SDL_FALSE);
+			if (!io.WantCaptureMouse && event.button.button == SDL_BUTTON_LEFT) SDL_SetRelativeMouseMode(SDL_FALSE);
 			break;
 		case SDL_MOUSEMOTION:
 			if (!io.WantCaptureMouse && SDL_GetRelativeMouseMode())
 			{
-				m_ViewAngleH += event.motion.xrel * ImGui::Integration::g_Controls_Camera_Sensitivity;
-				m_ViewAngleV -= event.motion.yrel * ImGui::Integration::g_Controls_Camera_Sensitivity;
+				viewAngleH_ += controls_cameraSensitivity_ * event.motion.xrel;
+				viewAngleV_ += controls_cameraSensitivity_ * event.motion.yrel;
+				viewAngleV_ = glm::clamp(viewAngleV_, -85.f, 85.f);
 			}
-			break;*/
+			break;
 		/*case SDL_KEYDOWN:
 			if (!io.WantCaptureMouse)
 			{
