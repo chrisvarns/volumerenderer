@@ -27,6 +27,7 @@ struct {
 	bool drawIntersectionPoints = false;
 	bool drawIntersectionGeometry = false;
 	bool updateIntersections = true;
+	bool fullscreen = false;
 	uint32_t cubeNumSlices = 10;
 	float cameraSensitivity = 0.1f;
 	float cameraFov = 60.0f;
@@ -432,7 +433,6 @@ void Render() {
 		glBindBuffer(GL_ARRAY_BUFFER, intersectionTriangleBuffer_);
 		glVertexAttribPointer(positionLoc_, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
 		glUniformMatrix4fv(mvpLoc_, 1, false, (GLfloat*)&mvp);
-		glPointSize(10.0f);
 		glDrawArrays(GL_TRIANGLES, 0, numIntersectionTriangles_);
 	}
 	if (imguiSettings_.drawIntersectionPoints) {
@@ -492,17 +492,21 @@ void MessagePump() {
 				viewAngleV_ = glm::clamp(viewAngleV_, -85.f, 85.f);
 			}
 			break;
-		/*case SDL_KEYDOWN:
+		case SDL_KEYDOWN:
 			if (!io.WantCaptureMouse)
 			{
 				switch (event.key.keysym.sym)
 				{
-				case SDLK_r:
-					++m_RenderMode;
+				case SDLK_RETURN:
+					if (SDL_GetModState() && KMOD_ALT) {
+						imguiSettings_.fullscreen = !imguiSettings_.fullscreen;
+						SDL_SetWindowFullscreen(window_, imguiSettings_.fullscreen);
+						PostResizeGlSetup();
+					}
 					break;
 				}
 			}
-			break;*/
+			break;
 		default:
 			break;
 		}
