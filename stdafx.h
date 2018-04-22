@@ -10,7 +10,9 @@
 #include <stdio.h>
 #include <tchar.h>
 #include <assert.h>
+#include <array>
 #include <string>
+#include <vector>
 
 #include "sdl/SDL.h"
 

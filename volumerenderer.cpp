@@ -6,8 +6,10 @@
 SDL_Window* window_;
 GLuint program_;
 GLint mvpLoc_;
-GLuint vertexBuffer_;
-GLuint indexBuffer_;
+GLint positionLoc_;
+GLuint cubeVertexBuffer_;
+GLuint cubeIndexBuffer_;
+GLuint edgesVertexBuffer_;
 glm::mat4 projection_;
 glm::mat4 model_;
 
@@ -16,6 +18,9 @@ float viewAngleH_ = 0.0f;
 
 struct {
 	bool showAppAbout = false;
+	bool drawCube = true;
+	bool drawEdges = false;
+	uint32_t cubeNumSlices = 10;
 	float cameraSensitivity = 0.1f;
 	float cameraFov = 60.0f;
 	glm::vec4 backgroundColor = glm::vec4(0.15f, 0.15f, 0.20f, 1.0f);
@@ -126,18 +131,27 @@ void CompileAndLinkShaders()
 	mvpLoc_ = glGetUniformLocation(program_, "mvp");
 }
 
-glm::vec3 cubeVerts[] = {
-	{ -1.0f, -1.0f, -1.0f }, // Left Bottom Front
-	{ -1.0f, -1.0f, 1.0f }, // Left bottom back
-	{ -1.0f, 1.0f, -1.0f }, // left top front
-	{ -1.0f, 1.0f, 1.0f }, // left top back
-	{ 1.0f, -1.0f, -1.0f }, // right bottom front
-	{ 1.0f, -1.0f, 1.0f }, // right bottom back
-	{ 1.0f, 1.0f, -1.0f }, // right top front
-	{ 1.0f, 1.0f, 1.0f } // right top back
+const glm::vec3 cubePos_LBF = { -1.0f, -1.0f, -1.0f };
+const glm::vec3 cubePos_LBB = { -1.0f, -1.0f, 1.0f };
+const glm::vec3 cubePos_LTF = { -1.0f, 1.0f, -1.0f };
+const glm::vec3 cubePos_LTB = { -1.0f, 1.0f, 1.0f };
+const glm::vec3 cubePos_RBF = { 1.0f, -1.0f, -1.0f };
+const glm::vec3 cubePos_RBB = { 1.0f, -1.0f, 1.0f };
+const glm::vec3 cubePos_RTF = { 1.0f, 1.0f, -1.0f };
+const glm::vec3 cubePos_RTB = { 1.0f, 1.0f, 1.0f };
+
+std::vector<glm::vec3> cubeVerts_ = {
+	cubePos_LBF,
+	cubePos_LBB,
+	cubePos_LTF,
+	cubePos_LTB,
+	cubePos_RBF,
+	cubePos_RBB,
+	cubePos_RTF,
+	cubePos_RTB
 };
 
-uint16_t cubeIndices[] = {
+std::vector<uint16_t> cubeIndices_ = {
 	0, 6, 2, 0, 4, 6, // Front face
 	4, 7, 6, 4, 5, 7, // right face
 	5, 3, 7, 5, 1, 3, // back face,
@@ -146,19 +160,55 @@ uint16_t cubeIndices[] = {
 	1, 4, 0, 1, 5, 4 // bottom face
 };
 
+const glm::vec3 rayDir_Back = { 0.0f, 0.0f, 2.0f };
+const glm::vec3 rayDir_Up = { 0.0f, 2.0f, 0.0f };
+const glm::vec3 rayDir_Right = { 2.0f, 0.0f, 0.0f };
+
+struct EdgeRay {
+	glm::vec3 origin;
+	glm::vec3 direction;
+};
+
+std::vector<EdgeRay> edgeRays_ = {
+	{ cubePos_LBF, rayDir_Back },
+	{ cubePos_LBF, rayDir_Up },
+	{ cubePos_LBF, rayDir_Right },
+	{ cubePos_LTF, rayDir_Back },
+	{ cubePos_LTF, rayDir_Right },
+	{ cubePos_RBF, rayDir_Back },
+	{ cubePos_RBF, rayDir_Up },
+	{ cubePos_RTF, rayDir_Back },
+	{ cubePos_LBB, rayDir_Up },
+	{ cubePos_LBB, rayDir_Right },
+	{ cubePos_LTB, rayDir_Right },
+	{ cubePos_RBB, rayDir_Up }
+};
+
 void CreateVertexBuffers() {
 
-	glGenBuffers(1, &vertexBuffer_);
-	glGenBuffers(1, &indexBuffer_);
+	glGenBuffers(1, &cubeVertexBuffer_);
+	glBindBuffer(GL_ARRAY_BUFFER, cubeVertexBuffer_);
+	glBufferData(GL_ARRAY_BUFFER, cubeVerts_.size() * sizeof(*cubeVerts_.data()), cubeVerts_.data(), GL_DYNAMIC_DRAW);
 
-	glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer_);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVerts), cubeVerts, GL_STATIC_DRAW);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer_);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(cubeIndices), cubeIndices, GL_STATIC_DRAW);
+	glGenBuffers(1, &cubeIndexBuffer_);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeIndexBuffer_);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, cubeIndices_.size() * sizeof(*cubeIndices_.data()), cubeIndices_.data(), GL_DYNAMIC_DRAW);
 
-	auto positionLoc = glGetAttribLocation(program_, "position");
-	glEnableVertexAttribArray(positionLoc);
-	glVertexAttribPointer(positionLoc, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
+	glGenBuffers(1, &edgesVertexBuffer_);
+	glBindBuffer(GL_ARRAY_BUFFER, edgesVertexBuffer_);
+
+	std::array<glm::vec3, 24> edgeVertexBuffer;
+	int idx = 0;
+	for (auto& EdgeRay : edgeRays_)
+	{
+		edgeVertexBuffer[idx++] = EdgeRay.origin;
+		edgeVertexBuffer[idx++] = EdgeRay.origin + EdgeRay.direction;
+	}
+
+	glBufferData(GL_ARRAY_BUFFER, edgeVertexBuffer.size() * sizeof(*edgeVertexBuffer.data()), edgeVertexBuffer.data(), GL_DYNAMIC_DRAW);
+
+	positionLoc_ = glGetAttribLocation(program_, "position");
+	glEnableVertexAttribArray(positionLoc_);
 }
 
 void PostResizeGlSetup() {
@@ -221,6 +271,12 @@ void RenderMenus()
 			ImGui::ColorPicker3("Background Color", (float*)&imguiSettings_.backgroundColor);
 		}
 
+		if (ImGui::CollapsingHeader("Drawables"))
+		{
+			ImGui::Checkbox("Cube", &imguiSettings_.drawCube);
+			ImGui::Checkbox("Edges", &imguiSettings_.drawEdges);
+		}
+
 		if (imguiSettings_.showAppAbout)
 		{
 			ImGui::Begin("About", &imguiSettings_.showAppAbout, ImGuiWindowFlags_AlwaysAutoResize);
@@ -231,6 +287,34 @@ void RenderMenus()
 		}
 
 		ImGui::End();
+	}
+}
+
+void CalculateCubeSlices(glm::mat4 modelView) {
+	auto edgeRays = edgeRays_;
+
+	// x == nearPlane, y == farPlane
+	glm::vec2 depthRange = glm::vec2(-100.f, +100.f);
+	for (auto& ray : edgeRays) {
+		auto vert = modelView * glm::vec4(ray.origin, 1.0f);
+		depthRange.x = glm::max(depthRange.x, vert.z);
+		depthRange.y = glm::min(depthRange.y, vert.z);
+		vert = modelView * glm::vec4(ray.origin + ray.direction, 1.0f);
+		depthRange.x = glm::max(depthRange.x, vert.z);
+		depthRange.y = glm::min(depthRange.y, vert.z);
+	}
+
+	float depthDiff = depthRange.x - depthRange.y;
+	float sliceDiff = depthDiff / imguiSettings_.cubeNumSlices;
+	float offsetToFirstPlane = sliceDiff / 2;
+	glm::vec3 planePos = glm::vec3(0.0f, 0.0f, depthRange.y + offsetToFirstPlane);
+
+	for (int i = 0; i < imguiSettings_.cubeNumSlices; i++) {
+		glm::vec4 plane(0.0f, 0.0f, 1.0f, planePos.z);
+
+		// A total of 12 intersections have to happen along all the edges of the box.
+
+		planePos.z += sliceDiff;
 	}
 }
 
@@ -246,19 +330,30 @@ void Render() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnable(GL_DEPTH_TEST);
 
-
 	auto viewPos = glm::vec3(0.0f, 0.0f, 2.0f);
 	viewPos = glm::rotate(viewPos, glm::radians(viewAngleV_), glm::vec3(1.0f, 0.0f, 0.0f));
 	viewPos = glm::rotate(viewPos, glm::radians(viewAngleH_), glm::vec3(0.0f, 1.0f, 0.0f));
-	
 	auto view = glm::lookAt(viewPos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
 	auto scale = glm::scale(glm::mat4(), glm::vec3(0.5f));
 	auto translate = glm::translate(glm::mat4(), glm::vec3(0.0f, 0.0f, 0.0f));
-	auto mvp = projection_ * view * translate * scale;
+	auto modelView = view * translate * scale;
+	CalculateCubeSlices(modelView);
+
+	auto mvp = projection_ * modelView;
 	glUniformMatrix4fv(mvpLoc_, 1, false, (GLfloat*)&mvp);
 
-	glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, 0);
+	if (imguiSettings_.drawCube) {
+		glBindBuffer(GL_ARRAY_BUFFER, cubeVertexBuffer_);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeIndexBuffer_);
+		glVertexAttribPointer(positionLoc_, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
+		glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, 0);
+	}
+	if (imguiSettings_.drawEdges) {
+		glBindBuffer(GL_ARRAY_BUFFER, edgesVertexBuffer_);
+		glVertexAttribPointer(positionLoc_, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
+		glDrawArrays(GL_LINES, 0, 24);
+	}
 
 	ImGui::ShowDemoWindow(nullptr);
 	RenderMenus();
