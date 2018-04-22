@@ -329,14 +329,21 @@ void CalculateCubeSlices(glm::mat4 modelView) {
 			}
 		}
 
-		//std::sort(intersectionPointsThisPlane.begin(), intersectionPointsThisPlane.end(),
-		//	[](const glm::vec3& a, const glm::vec3& b) -> bool
-		//{
-		//	auto posX = glm::vec2(1.0f, 0.0f);
-		//	auto angleA = glm::dot(posX, glm::normalize(glm::vec2(a)));
-		//	auto angleB = glm::dot(posX, glm::normalize(glm::vec2(b)));
-		//	return angleA < angleB;
-		//});
+		glm::vec2 centerPoint = glm::vec2(0.0f);
+		for (auto& point : intersectionPointsThisPlane)
+		{
+			centerPoint += glm::vec2(point);
+		}
+		centerPoint /= intersectionPointsThisPlane.size();
+
+		std::sort(intersectionPointsThisPlane.begin(), intersectionPointsThisPlane.end(),
+			[centerPoint](const glm::vec3& a, const glm::vec3& b) -> bool
+		{
+			auto posX = glm::vec2(1.0f, 0.0f);
+			auto angleA = glm::orientedAngle(glm::normalize(glm::vec2(a) - centerPoint), posX);
+			auto angleB = glm::orientedAngle(glm::normalize(glm::vec2(b) - centerPoint), posX);
+			return angleA < angleB;
+		});
 
 		intersectionPoints.insert(intersectionPoints.end(), intersectionPointsThisPlane.begin(), intersectionPointsThisPlane.end());
 		d += sliceDiff;
