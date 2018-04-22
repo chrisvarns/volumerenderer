@@ -10,6 +10,8 @@ GLint positionLoc_;
 GLuint cubeVertexBuffer_;
 GLuint cubeIndexBuffer_;
 GLuint edgesVertexBuffer_;
+GLuint pointBuffer_;
+int numPoints_;
 glm::mat4 projection_;
 glm::mat4 model_;
 
@@ -20,6 +22,8 @@ struct {
 	bool showAppAbout = false;
 	bool drawCube = true;
 	bool drawEdges = false;
+	bool drawIntersections = false;
+	int numIntersectionsToDraw = 1;
 	uint32_t cubeNumSlices = 10;
 	float cameraSensitivity = 0.1f;
 	float cameraFov = 60.0f;
@@ -164,24 +168,19 @@ const glm::vec3 rayDir_Back = { 0.0f, 0.0f, 2.0f };
 const glm::vec3 rayDir_Up = { 0.0f, 2.0f, 0.0f };
 const glm::vec3 rayDir_Right = { 2.0f, 0.0f, 0.0f };
 
-struct EdgeRay {
-	glm::vec3 origin;
-	glm::vec3 direction;
-};
-
-std::vector<EdgeRay> edgeRays_ = {
-	{ cubePos_LBF, rayDir_Back },
-	{ cubePos_LBF, rayDir_Up },
-	{ cubePos_LBF, rayDir_Right },
-	{ cubePos_LTF, rayDir_Back },
-	{ cubePos_LTF, rayDir_Right },
-	{ cubePos_RBF, rayDir_Back },
-	{ cubePos_RBF, rayDir_Up },
-	{ cubePos_RTF, rayDir_Back },
-	{ cubePos_LBB, rayDir_Up },
-	{ cubePos_LBB, rayDir_Right },
-	{ cubePos_LTB, rayDir_Right },
-	{ cubePos_RBB, rayDir_Up }
+std::vector<glm::vec3> edgeVerts_ = {
+	{ cubePos_LBF }, { cubePos_LBF + rayDir_Back },
+	{ cubePos_LBF }, { cubePos_LBF + rayDir_Up },
+	{ cubePos_LBF }, { cubePos_LBF + rayDir_Right },
+	{ cubePos_LTF }, { cubePos_LTF + rayDir_Back },
+	{ cubePos_LTF }, { cubePos_LTF + rayDir_Right },
+	{ cubePos_RBF }, { cubePos_RBF + rayDir_Back },
+	{ cubePos_RBF }, { cubePos_RBF + rayDir_Up },
+	{ cubePos_RTF }, { cubePos_RTF + rayDir_Back },
+	{ cubePos_LBB }, { cubePos_LBB + rayDir_Up },
+	{ cubePos_LBB }, { cubePos_LBB + rayDir_Right },
+	{ cubePos_LTB }, { cubePos_LTB + rayDir_Right },
+	{ cubePos_RBB }, { cubePos_RBB + rayDir_Up }
 };
 
 void CreateVertexBuffers() {
@@ -196,16 +195,9 @@ void CreateVertexBuffers() {
 
 	glGenBuffers(1, &edgesVertexBuffer_);
 	glBindBuffer(GL_ARRAY_BUFFER, edgesVertexBuffer_);
+	glBufferData(GL_ARRAY_BUFFER, edgeVerts_.size() * sizeof(*edgeVerts_.data()), edgeVerts_.data(), GL_DYNAMIC_DRAW);
 
-	std::array<glm::vec3, 24> edgeVertexBuffer;
-	int idx = 0;
-	for (auto& EdgeRay : edgeRays_)
-	{
-		edgeVertexBuffer[idx++] = EdgeRay.origin;
-		edgeVertexBuffer[idx++] = EdgeRay.origin + EdgeRay.direction;
-	}
-
-	glBufferData(GL_ARRAY_BUFFER, edgeVertexBuffer.size() * sizeof(*edgeVertexBuffer.data()), edgeVertexBuffer.data(), GL_DYNAMIC_DRAW);
+	glGenBuffers(1, &pointBuffer_);
 
 	positionLoc_ = glGetAttribLocation(program_, "position");
 	glEnableVertexAttribArray(positionLoc_);
@@ -275,6 +267,8 @@ void RenderMenus()
 		{
 			ImGui::Checkbox("Cube", &imguiSettings_.drawCube);
 			ImGui::Checkbox("Edges", &imguiSettings_.drawEdges);
+			ImGui::Checkbox("Plane intersections", &imguiSettings_.drawIntersections);
+			ImGui::InputInt("Number of intersections to draw", &imguiSettings_.numIntersectionsToDraw);
 		}
 
 		if (imguiSettings_.showAppAbout)
@@ -291,31 +285,67 @@ void RenderMenus()
 }
 
 void CalculateCubeSlices(glm::mat4 modelView) {
-	auto edgeRays = edgeRays_;
-
+	struct EdgeRay {
+		glm::vec3 origin;
+		glm::vec3 direction;
+	};
+	std::vector<EdgeRay> edgeRays;
 	// x == nearPlane, y == farPlane
 	glm::vec2 depthRange = glm::vec2(-100.f, +100.f);
-	for (auto& ray : edgeRays) {
-		auto vert = modelView * glm::vec4(ray.origin, 1.0f);
-		depthRange.x = glm::max(depthRange.x, vert.z);
-		depthRange.y = glm::min(depthRange.y, vert.z);
-		vert = modelView * glm::vec4(ray.origin + ray.direction, 1.0f);
-		depthRange.x = glm::max(depthRange.x, vert.z);
-		depthRange.y = glm::min(depthRange.y, vert.z);
+
+	auto edgeVertItr = edgeVerts_.cbegin();
+	while (edgeVertItr != edgeVerts_.cend()) {
+
+		auto startPoint = modelView * glm::vec4(*edgeVertItr++, 1.0f);
+		auto endPoint = modelView * glm::vec4(*edgeVertItr++, 1.0f);
+		depthRange.x = glm::max(depthRange.x, startPoint.z);
+		depthRange.y = glm::min(depthRange.y, startPoint.z);
+		depthRange.x = glm::max(depthRange.x, endPoint.z);
+		depthRange.y = glm::min(depthRange.y, endPoint.z);
+
+		EdgeRay edgeRay;
+		edgeRay.origin = startPoint;
+		edgeRay.direction = endPoint - startPoint;
+		edgeRays.push_back(edgeRay);
 	}
 
 	float depthDiff = depthRange.x - depthRange.y;
 	float sliceDiff = depthDiff / imguiSettings_.cubeNumSlices;
 	float offsetToFirstPlane = sliceDiff / 2;
-	glm::vec3 planePos = glm::vec3(0.0f, 0.0f, depthRange.y + offsetToFirstPlane);
 
-	for (int i = 0; i < imguiSettings_.cubeNumSlices; i++) {
-		glm::vec4 plane(0.0f, 0.0f, 1.0f, planePos.z);
+	std::vector<glm::vec3> intersectionPoints;
+	glm::vec3 n = glm::vec3(0.0f, 0.0f, 1.0f);
+	float d = depthRange.y + offsetToFirstPlane;
 
-		// A total of 12 intersections have to happen along all the edges of the box.
+	for (int planeIdx = 0; planeIdx < imguiSettings_.cubeNumSlices; planeIdx++) {
+		std::vector<glm::vec3> intersectionPointsThisPlane;
 
-		planePos.z += sliceDiff;
+		// Perform the intersection tests
+		for (auto& ray : edgeRays) {
+			float t = (d - glm::dot(ray.origin, n))
+				/ glm::dot(ray.direction, n);
+			if (t > 0.0f && t < 1.0f) {
+				intersectionPointsThisPlane.push_back(ray.origin + ray.direction * t);
+			}
+		}
+
+		//std::sort(intersectionPointsThisPlane.begin(), intersectionPointsThisPlane.end(),
+		//	[](const glm::vec3& a, const glm::vec3& b) -> bool
+		//{
+		//	auto posX = glm::vec2(1.0f, 0.0f);
+		//	auto angleA = glm::dot(posX, glm::normalize(glm::vec2(a)));
+		//	auto angleB = glm::dot(posX, glm::normalize(glm::vec2(b)));
+		//	return angleA < angleB;
+		//});
+
+		intersectionPoints.insert(intersectionPoints.end(), intersectionPointsThisPlane.begin(), intersectionPointsThisPlane.end());
+		d += sliceDiff;
 	}
+
+	// Update the points buffer
+	glBindBuffer(GL_ARRAY_BUFFER, pointBuffer_);
+	glBufferData(GL_ARRAY_BUFFER, intersectionPoints.size() * sizeof(*intersectionPoints.data()), intersectionPoints.data(), GL_DYNAMIC_DRAW);
+	numPoints_ = intersectionPoints.size();
 }
 
 void Render() {
@@ -353,6 +383,13 @@ void Render() {
 		glBindBuffer(GL_ARRAY_BUFFER, edgesVertexBuffer_);
 		glVertexAttribPointer(positionLoc_, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
 		glDrawArrays(GL_LINES, 0, 24);
+	}
+	if (imguiSettings_.drawIntersections) {
+		glBindBuffer(GL_ARRAY_BUFFER, pointBuffer_);
+		glVertexAttribPointer(positionLoc_, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
+		glUniformMatrix4fv(mvpLoc_, 1, false, (GLfloat*)&projection_);
+		glPointSize(10.0f);
+		glDrawArrays(GL_POINTS, 0, glm::min(numPoints_, imguiSettings_.numIntersectionsToDraw));
 	}
 
 	ImGui::ShowDemoWindow(nullptr);
