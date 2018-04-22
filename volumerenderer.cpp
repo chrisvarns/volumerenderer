@@ -129,10 +129,8 @@ void CreateVertexBuffers() {
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(cubeIndices), cubeIndices, GL_STATIC_DRAW);
 }
 
-int main(int argc, char** argv)
+void SetupGLState()
 {
-	SetupWindow();
-
 	GLuint vertexArray;
 	glGenVertexArrays(1, &vertexArray);
 	glBindVertexArray(vertexArray);
@@ -141,7 +139,7 @@ int main(int argc, char** argv)
 	CreateVertexBuffers();
 
 	auto projection = glm::perspective(90.0f, 1280.0f / 720, 1.0f, 100.0f);
-	auto view = glm::lookAt(glm::vec3(0.0f, 0.0f, 10.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	auto view = glm::lookAt(glm::vec3(0.0f, 0.0f, 2.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	auto translate = glm::translate(glm::mat4(), glm::vec3(0.0f, 0.0f, -1.0f));
 	auto mvp = projection * view * translate;
 
@@ -151,14 +149,70 @@ int main(int argc, char** argv)
 	auto positionLoc = glGetAttribLocation(program_, "position");
 	glEnableVertexAttribArray(positionLoc);
 	glVertexAttribPointer(positionLoc, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
+}
 
+void Render() {
 	glClearColor(0.15f, 0.15f, 0.20f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, 0);
-
 	SDL_GL_SwapWindow(window_);
+}
+
+void MessagePump() {
+	SDL_Event event;
+	while (SDL_PollEvent(&event))
+	{
+		//imgui->ProcessEvent(&event);
+		switch (event.type)
+		{
+		case SDL_QUIT:
+			exit(0);
+			break;
+
+		case SDL_WINDOWEVENT:
+			//HandleWindowEvent(event);
+			break;
+
+		/*case SDL_MOUSEBUTTONDOWN:
+			if (!io.WantCaptureMouse && event.button.button == SDL_BUTTON_RIGHT) SDL_SetRelativeMouseMode(SDL_TRUE);
+			break;
+		case SDL_MOUSEBUTTONUP:
+			if (!io.WantCaptureMouse && event.button.button == SDL_BUTTON_RIGHT) SDL_SetRelativeMouseMode(SDL_FALSE);
+			break;
+		case SDL_MOUSEMOTION:
+			if (!io.WantCaptureMouse && SDL_GetRelativeMouseMode())
+			{
+				m_ViewAngleH += event.motion.xrel * ImGui::Integration::g_Controls_Camera_Sensitivity;
+				m_ViewAngleV -= event.motion.yrel * ImGui::Integration::g_Controls_Camera_Sensitivity;
+			}
+			break;*/
+		/*case SDL_KEYDOWN:
+			if (!io.WantCaptureMouse)
+			{
+				switch (event.key.keysym.sym)
+				{
+				case SDLK_r:
+					++m_RenderMode;
+					break;
+				}
+			}
+			break;*/
+		default:
+			break;
+		}
+	}
+}
+
+int main(int argc, char** argv)
+{
+	SetupWindow();
+
+	SetupGLState();
+
 	while (true) {
+		MessagePump();
+		Render();
 	}
 
 	return 0;
