@@ -14,8 +14,10 @@ int numIntersectionPoints_;
 int numIntersectionTriangles_;
 glm::mat4 projection_;
 glm::mat4 model_;
+std::vector<float> histData_;
+glm::vec2 histDataRange_;
 
-const char* AppName = "Volume Texture Visualizer";
+const char* AppName = "Volumetric Data Visualizer";
 
 float viewAngleV_ = 0.0f;
 float viewAngleH_ = 0.0f;
@@ -271,6 +273,27 @@ void BindShader(const Shader& shader)
 	glEnableVertexAttribArray(shader.positionLoc);
 }
 
+void CalculateHistogramData(std::vector<char> &textureData)
+{
+	histData_ = std::vector<float>(256, 0);
+	for (unsigned char val : textureData)
+	{
+		histData_[val] += 0.01f;
+	}
+
+	for (int i = 0; i < histData_.size(); ++i)
+	{
+		histData_[i] = glm::log(histData_[i] + 1.0f);
+	}
+
+	histDataRange_ = glm::vec2(histData_[0]);
+	for (int i = 1; i < histData_.size(); ++i)
+	{
+		histDataRange_.x = glm::min(histDataRange_.x, histData_[i]);
+		histDataRange_.y = glm::max(histDataRange_.y, histData_[i]);
+	}
+}
+
 void LoadTexture()
 {
 	std::string path = "head256x256x109";
@@ -282,6 +305,8 @@ void LoadTexture()
 	auto size = width*height*depth;
 	std::vector<char> textureData(size, 'x');
 	SDL_RWread(rwOps, textureData.data(), 1, size);
+
+	CalculateHistogramData(textureData);
 
 	glGenTextures(1, &texture_);
 	glBindTexture(GL_TEXTURE_3D, texture_);
@@ -364,6 +389,11 @@ void RenderMenus()
 		if (ImGui::CollapsingHeader("Update"))
 		{
 			ImGui::Checkbox("Intersections", &imguiSettings_.updateIntersections);
+		}
+
+		if (ImGui::CollapsingHeader("Data insights"))
+		{
+			ImGui::PlotHistogram("Distribution", histData_.data(), histData_.size(), 0, "Log scale", histDataRange_.x, histDataRange_.y, ImVec2(0, 80));
 		}
 
 		if (ImGui::CollapsingHeader("Debug"))
