@@ -65,7 +65,7 @@ void SetupWindow()
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
 
-	window_ = SDL_CreateWindow("Volume texture visualizer",
+	window_ = SDL_CreateWindow("Volumetric data visualizer",
 		SDL_WINDOWPOS_UNDEFINED,
 		SDL_WINDOWPOS_UNDEFINED,
 		windowSize_.x, windowSize_.y,
