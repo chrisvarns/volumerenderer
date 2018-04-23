@@ -31,6 +31,7 @@ struct {
 	float cameraSensitivity = 0.1f;
 	float cameraFov = 60.0f;
 	float alphaThreshold = 0.2f;
+	float alphaScale = 1.0f;
 	glm::vec4 backgroundColor = glm::vec4(0.15f, 0.15f, 0.20f, 1.0f);
 } imguiSettings_;
 
@@ -39,6 +40,7 @@ struct Shader {
 	GLuint positionLoc;
 	GLint mvpLoc;
 	GLint alphaThresholdLoc;
+	GLint alphaScaleLoc;
 };
 
 Shader debugColorShader_;
@@ -177,17 +179,20 @@ void LoadShaders()
 		"in vec3 texcoord;\n"
 		"uniform sampler3D volumeTex;\n"
 		"uniform float alphaThreshold;\n"
+		"uniform float alphaScale;\n"
 		"out vec4 color; \n"
 		"void main() { \n"
 		"	vec3 uvw = vec3(texcoord.x, 1-texcoord.y, texcoord.z);\n"
 		"	color = texture(volumeTex, uvw).rrrr;\n"
 		"if(color.a < alphaThreshold) color.a = 0;\n"
+		"color.a *= alphaScale;\n"
 		"}"
 		;
 
 	texturedVolumeShader_.program = CompileAndLinkShaders(texturedVertexShaderStr, texturedFragmentShaderStr);
 	texturedVolumeShader_.mvpLoc = glGetUniformLocation(texturedVolumeShader_.program, "mvp");
 	texturedVolumeShader_.alphaThresholdLoc = glGetUniformLocation(texturedVolumeShader_.program, "alphaThreshold");
+	texturedVolumeShader_.alphaScaleLoc = glGetUniformLocation(texturedVolumeShader_.program, "alphaScale");
 }
 
 const glm::vec3 cubePos_LBF = { -1.0f, -1.0f, -1.0f };
@@ -360,6 +365,7 @@ void RenderMenus()
 		{
 			ImGui::SliderInt("Num slices", &imguiSettings_.cubeNumSlices, 1, 512);
 			ImGui::SliderFloat("Alpha threshold", &imguiSettings_.alphaThreshold, 0.0f, 1.0f);
+			ImGui::SliderFloat("Alpha scale", &imguiSettings_.alphaScale, 0.0f, 1.0f);
 			ImGui::Checkbox("Draw cube", &imguiSettings_.drawCube);
 			ImGui::Checkbox("Draw intersection points", &imguiSettings_.drawIntersectionPoints);
 			ImGui::Checkbox("Draw intersection geometry", &imguiSettings_.drawIntersectionGeometry);
@@ -537,6 +543,7 @@ void Render() {
 		glVertexAttribPointer(texturedVolumeShader_.positionLoc, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
 		glUniformMatrix4fv(texturedVolumeShader_.mvpLoc, 1, false, (GLfloat*)&mvp);
 		glUniform1f(texturedVolumeShader_.alphaThresholdLoc, imguiSettings_.alphaThreshold);
+		glUniform1f(texturedVolumeShader_.alphaScaleLoc, imguiSettings_.alphaScale);
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		glDisable(GL_DEPTH_TEST);
