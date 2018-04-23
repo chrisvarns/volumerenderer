@@ -15,6 +15,8 @@ int numIntersectionTriangles_;
 glm::mat4 projection_;
 glm::mat4 model_;
 
+const char* AppName = "Volume Texture Visualizer";
+
 float viewAngleV_ = 0.0f;
 float viewAngleH_ = 0.0f;
 
@@ -65,7 +67,7 @@ void SetupWindow()
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
 
-	window_ = SDL_CreateWindow("Volumetric data visualizer",
+	window_ = SDL_CreateWindow(AppName,
 		SDL_WINDOWPOS_UNDEFINED,
 		SDL_WINDOWPOS_UNDEFINED,
 		windowSize_.x, windowSize_.y,
@@ -377,9 +379,10 @@ void RenderMenus()
 		if (imguiSettings_.showAppAbout)
 		{
 			ImGui::Begin("About", &imguiSettings_.showAppAbout, ImGuiWindowFlags_AlwaysAutoResize);
-			ImGui::Text("Volume Texture Visualizer", ImGui::GetVersion());
+			ImGui::Text(AppName, ImGui::GetVersion());
 			ImGui::Separator();
-			ImGui::Text("By Chris Varnsverry.");
+			ImGui::Text("© Chris Varnsverry.");
+			ImGui::Text("chrisvarnz@gmail.com");
 			ImGui::End();
 		}
 
