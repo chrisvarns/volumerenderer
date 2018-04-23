@@ -4,14 +4,12 @@
 #include "imgui/imgui_impl_sdl_gl3.h"
 
 SDL_Window* window_;
-GLuint program_;
-GLint mvpLoc_;
-GLint positionLoc_;
 GLuint cubeVertexBuffer_;
 GLuint cubeIndexBuffer_;
 GLuint edgesVertexBuffer_;
 GLuint intersectionPointBuffer_;
 GLuint intersectionTriangleBuffer_;
+GLuint texture_;
 int numIntersectionPoints_;
 int numIntersectionTriangles_;
 glm::mat4 projection_;
@@ -22,17 +20,29 @@ float viewAngleH_ = 0.0f;
 
 struct {
 	bool showAppAbout = false;
-	bool drawCube = true;
-	bool drawEdges = false;
+	bool drawCube = false;
+	bool drawEdges = true;
 	bool drawIntersectionPoints = false;
 	bool drawIntersectionGeometry = false;
+	bool drawTexturedVolume = true;
 	bool updateIntersections = true;
 	bool fullscreen = false;
-	uint32_t cubeNumSlices = 10;
+	int cubeNumSlices = 256;
 	float cameraSensitivity = 0.1f;
 	float cameraFov = 60.0f;
+	float alphaThreshold = 0.2f;
 	glm::vec4 backgroundColor = glm::vec4(0.15f, 0.15f, 0.20f, 1.0f);
 } imguiSettings_;
+
+struct Shader {
+	GLuint program;
+	GLuint positionLoc;
+	GLint mvpLoc;
+	GLint alphaThresholdLoc;
+};
+
+Shader debugColorShader_;
+Shader texturedVolumeShader_;
 
 glm::vec2 windowSize_ = glm::vec2(1280, 720);
 
@@ -75,68 +85,109 @@ std::string GetCompileLog(GLuint shader) {
 	return log;
 }
 
-void CompileAndLinkShaders()
+void CheckCompiledOK(GLint linkStatus, GLuint program)
 {
-	std::string vertexShaderStr =
-		"#version 330 core\n"
-		"layout(location = 0) in vec3 position;\n"
-		"out vec3 vertColor;\n"
-		"uniform mat4 mvp;\n"
-		"void main () { \n"
-		"	gl_Position = mvp * vec4(position, 1);\n"
-		"	vertColor = (position + 1)/2;\n"
-		"}"
-		;
+	if (linkStatus != GL_TRUE) {
+		auto log = GetCompileLog(program);
+		OutputDebugStringA(log.c_str());
+		assert(false);
+	}
+}
 
-	std::string fragmentShaderStr =
-		"#version 330 core\n"
-		"in vec3 vertColor;\n"
-		"out vec3 color; \n"
-		"void main() { \n"
-		"	color = vertColor;\n"
-		"}"
-		;
-
+GLuint CompileAndLinkShaders(const std::string& vertSrc, const std::string& fragSrc) {
 	auto vertexShader = glCreateShader(GL_VERTEX_SHADER);
 	{
-		auto vertexShaderSrcPtr = vertexShaderStr.data();
-		GLint length = vertexShaderStr.length();
+		auto vertexShaderSrcPtr = vertSrc.data();
+		GLint length = vertSrc.length();
 		glShaderSource(vertexShader, 1, &vertexShaderSrcPtr, &length);
 		glCompileShader(vertexShader);
 		GLint compileStatus;
 		glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &compileStatus);
 		if (compileStatus != GL_TRUE) {
 			auto log = GetCompileLog(vertexShader);
+			OutputDebugStringA(log.c_str());
 			assert(false);
 		}
 	}
 	auto fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
 	{
-		auto fragmentShaderSrcPtr = fragmentShaderStr.data();
-		GLint length = fragmentShaderStr.length();
+		auto fragmentShaderSrcPtr = fragSrc.data();
+		GLint length = fragSrc.length();
 		glShaderSource(fragmentShader, 1, &fragmentShaderSrcPtr, &length);
 		glCompileShader(fragmentShader);
 		GLint compileStatus;
 		glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &compileStatus);
 		if (compileStatus != GL_TRUE) {
 			auto log = GetCompileLog(fragmentShader);
+			OutputDebugStringA(log.c_str());
 			assert(false);
 		}
 	}
 
-	program_ = glCreateProgram();
-	glAttachShader(program_, vertexShader);
-	glAttachShader(program_, fragmentShader);
-	glLinkProgram(program_);
+	auto program = glCreateProgram();
+	glAttachShader(program, vertexShader);
+	glAttachShader(program, fragmentShader);
+	glLinkProgram(program);
 	GLint linkStatus;
-	glGetProgramiv(program_, GL_LINK_STATUS, &linkStatus);
-	if (linkStatus != GL_TRUE) {
-		assert(false);
-	}
+	glGetProgramiv(program, GL_LINK_STATUS, &linkStatus);
+	CheckCompiledOK(linkStatus, program);
 
-	glUseProgram(program_);
+	return program;
+}
 
-	mvpLoc_ = glGetUniformLocation(program_, "mvp");
+void LoadShaders()
+{
+	std::string debugColorVertexShaderStr =
+		"#version 330 core\n"
+		"layout(location = 0) in vec3 position;\n"
+		"out vec3 texcoord;\n"
+		"uniform mat4 mvp;\n"
+		"void main () { \n"
+		"	gl_Position = mvp * vec4(position, 1);\n"
+		"	texcoord = (position + 1)/2;\n"
+		"}"
+		;
+
+	std::string debugColorFragmentShaderStr =
+		"#version 330 core\n"
+		"in vec3 texcoord;\n"
+		"out vec3 color; \n"
+		"void main() { \n"
+		"	color = texcoord;\n"
+		"}"
+		;
+
+	debugColorShader_.program = CompileAndLinkShaders(debugColorVertexShaderStr, debugColorFragmentShaderStr);
+	debugColorShader_.mvpLoc = glGetUniformLocation(debugColorShader_.program, "mvp");
+	debugColorShader_.positionLoc = glGetAttribLocation(debugColorShader_.program, "position");
+
+	std::string texturedVertexShaderStr =
+		"#version 330 core\n"
+		"layout(location = 0) in vec3 position;\n"
+		"out vec3 texcoord;\n"
+		"uniform mat4 mvp;\n"
+		"void main () { \n"
+		"	gl_Position = mvp * vec4(position, 1);\n"
+		"	texcoord = (position + 1)/2;\n"
+		"}"
+		;
+
+	std::string texturedFragmentShaderStr =
+		"#version 330 core\n"
+		"in vec3 texcoord;\n"
+		"uniform sampler3D volumeTex;\n"
+		"uniform float alphaThreshold;\n"
+		"out vec4 color; \n"
+		"void main() { \n"
+		"	vec3 uvw = vec3(texcoord.x, 1-texcoord.y, texcoord.z);\n"
+		"	color = texture(volumeTex, uvw).rrrr;\n"
+		"if(color.a < alphaThreshold) color.a = 0;\n"
+		"}"
+		;
+
+	texturedVolumeShader_.program = CompileAndLinkShaders(texturedVertexShaderStr, texturedFragmentShaderStr);
+	texturedVolumeShader_.mvpLoc = glGetUniformLocation(texturedVolumeShader_.program, "mvp");
+	texturedVolumeShader_.alphaThresholdLoc = glGetUniformLocation(texturedVolumeShader_.program, "alphaThreshold");
 }
 
 const glm::vec3 cubePos_LBF = { -1.0f, -1.0f, -1.0f };
@@ -203,9 +254,34 @@ void CreateVertexBuffers() {
 
 	glGenBuffers(1, &intersectionPointBuffer_);
 	glGenBuffers(1, &intersectionTriangleBuffer_);
+}
 
-	positionLoc_ = glGetAttribLocation(program_, "position");
-	glEnableVertexAttribArray(positionLoc_);
+void BindShader(const Shader& shader)
+{
+	glUseProgram(shader.program);
+	glEnableVertexAttribArray(shader.positionLoc);
+}
+
+void LoadTexture()
+{
+	std::string path = "head256x256x109";
+	auto rwOps = SDL_RWFromFile(path.c_str(), "rb");
+	
+	auto depth = 109;
+	auto width = 256;
+	auto height = 256;
+	auto size = width*height*depth;
+	std::vector<char> textureData(size, 'x');
+	SDL_RWread(rwOps, textureData.data(), 1, size);
+
+	glGenTextures(1, &texture_);
+	glBindTexture(GL_TEXTURE_3D, texture_);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, width, height, depth, 0, GL_RED, GL_UNSIGNED_BYTE, textureData.data());
 }
 
 void PostResizeGlSetup() {
@@ -224,8 +300,9 @@ void HandleWindowResize(int width, int height) {
 
 void SetupGLState()
 {
-	CompileAndLinkShaders();
+	LoadShaders();
 	CreateVertexBuffers();
+	LoadTexture();
 
 	PostResizeGlSetup();
 }
@@ -270,15 +347,22 @@ void RenderMenus()
 
 		if (ImGui::CollapsingHeader("Draw"))
 		{
-			ImGui::Checkbox("Cube", &imguiSettings_.drawCube);
+			ImGui::Checkbox("Volume", &imguiSettings_.drawTexturedVolume);
 			ImGui::Checkbox("Edges", &imguiSettings_.drawEdges);
-			ImGui::Checkbox("Intersection points", &imguiSettings_.drawIntersectionPoints);
-			ImGui::Checkbox("Intersection geometry", &imguiSettings_.drawIntersectionGeometry);
 		}
 
 		if (ImGui::CollapsingHeader("Update"))
 		{
 			ImGui::Checkbox("Intersections", &imguiSettings_.updateIntersections);
+		}
+
+		if (ImGui::CollapsingHeader("Debug"))
+		{
+			ImGui::SliderInt("Num slices", &imguiSettings_.cubeNumSlices, 1, 512);
+			ImGui::SliderFloat("Alpha threshold", &imguiSettings_.alphaThreshold, 0.0f, 1.0f);
+			ImGui::Checkbox("Draw cube", &imguiSettings_.drawCube);
+			ImGui::Checkbox("Draw intersection points", &imguiSettings_.drawIntersectionPoints);
+			ImGui::Checkbox("Draw intersection geometry", &imguiSettings_.drawIntersectionGeometry);
 		}
 
 		if (imguiSettings_.showAppAbout)
@@ -417,30 +501,46 @@ void Render() {
 	auto mvp = projection_ * modelView;
 
 	if (imguiSettings_.drawCube) {
+		BindShader(debugColorShader_);
 		glBindBuffer(GL_ARRAY_BUFFER, cubeVertexBuffer_);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeIndexBuffer_);
-		glVertexAttribPointer(positionLoc_, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
-		glUniformMatrix4fv(mvpLoc_, 1, false, (GLfloat*)&mvp);
+		glVertexAttribPointer(debugColorShader_.positionLoc, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
+		glUniformMatrix4fv(debugColorShader_.mvpLoc, 1, false, (GLfloat*)&mvp);
 		glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, 0);
 	}
 	if (imguiSettings_.drawEdges) {
+		BindShader(debugColorShader_);
 		glBindBuffer(GL_ARRAY_BUFFER, edgesVertexBuffer_);
-		glVertexAttribPointer(positionLoc_, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
-		glUniformMatrix4fv(mvpLoc_, 1, false, (GLfloat*)&mvp);
+		glVertexAttribPointer(debugColorShader_.positionLoc, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
+		glUniformMatrix4fv(debugColorShader_.mvpLoc, 1, false, (GLfloat*)&mvp);
 		glDrawArrays(GL_LINES, 0, 24);
 	}
 	if (imguiSettings_.drawIntersectionGeometry) {
+		BindShader(debugColorShader_);
 		glBindBuffer(GL_ARRAY_BUFFER, intersectionTriangleBuffer_);
-		glVertexAttribPointer(positionLoc_, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
-		glUniformMatrix4fv(mvpLoc_, 1, false, (GLfloat*)&mvp);
+		glVertexAttribPointer(debugColorShader_.positionLoc, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
+		glUniformMatrix4fv(debugColorShader_.mvpLoc, 1, false, (GLfloat*)&mvp);
 		glDrawArrays(GL_TRIANGLES, 0, numIntersectionTriangles_);
 	}
 	if (imguiSettings_.drawIntersectionPoints) {
+		BindShader(debugColorShader_);
 		glBindBuffer(GL_ARRAY_BUFFER, intersectionPointBuffer_);
-		glVertexAttribPointer(positionLoc_, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
-		glUniformMatrix4fv(mvpLoc_, 1, false, (GLfloat*)&mvp);
+		glVertexAttribPointer(debugColorShader_.positionLoc, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
+		glUniformMatrix4fv(debugColorShader_.mvpLoc, 1, false, (GLfloat*)&mvp);
 		glPointSize(10.0f);
 		glDrawArrays(GL_POINTS, 0, numIntersectionPoints_);
+	}
+	if (imguiSettings_.drawTexturedVolume) {
+		BindShader(texturedVolumeShader_);
+		glBindTexture(GL_TEXTURE_3D, texture_);
+		glBindBuffer(GL_ARRAY_BUFFER, intersectionTriangleBuffer_);
+		glVertexAttribPointer(texturedVolumeShader_.positionLoc, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
+		glUniformMatrix4fv(texturedVolumeShader_.mvpLoc, 1, false, (GLfloat*)&mvp);
+		glUniform1f(texturedVolumeShader_.alphaThresholdLoc, imguiSettings_.alphaThreshold);
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glDisable(GL_DEPTH_TEST);
+		glDrawArrays(GL_TRIANGLES, 0, numIntersectionTriangles_);
 	}
 
 	ImGui::ShowDemoWindow(nullptr);

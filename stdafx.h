@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Windows.h"
 #include "targetver.h"
 
 #include <stdio.h>
