@@ -28,8 +28,10 @@ struct {
 	bool updateIntersections = true;
 	bool fullscreen = false;
 	int cubeNumSlices = 256;
-	float cameraSensitivity = 0.1f;
+	float mouseSensitivity = 0.1f;
+	float mouseWheelSensitivity = 0.1f;
 	float cameraFov = 60.0f;
+	float cameraDistance = 2.0f;
 	float alphaThreshold = 0.2f;
 	float alphaScale = 1.0f;
 	glm::vec4 backgroundColor = glm::vec4(0.15f, 0.15f, 0.20f, 1.0f);
@@ -291,7 +293,7 @@ void LoadTexture()
 
 void PostResizeGlSetup() {
 	auto aspect = windowSize_.x / windowSize_.y;
-	projection_ = glm::perspective(glm::radians(imguiSettings_.cameraFov), aspect, 1.0f, 10.0f);
+	projection_ = glm::perspective(glm::radians(imguiSettings_.cameraFov), aspect, 1.0f, 50.0f);
 
 	glViewport(0, 0, windowSize_.x, windowSize_.y);
 }
@@ -338,7 +340,8 @@ void RenderMenus()
 
 		if (ImGui::CollapsingHeader("Camera Controls"))
 		{
-			ImGui::SliderFloat("Mouse sensitivity", &imguiSettings_.cameraSensitivity, 0.01f, 0.5f);
+			ImGui::SliderFloat("Mouse sensitivity", &imguiSettings_.mouseSensitivity, 0.01f, 0.5f);
+			ImGui::SliderFloat("Mouse wheel sensitivity", &imguiSettings_.mouseWheelSensitivity, 0.01f, 0.5f);
 			if (ImGui::SliderFloat("FOV", &imguiSettings_.cameraFov, 10.0f, 150.0f))
 			{
 				PostResizeGlSetup();
@@ -492,7 +495,7 @@ void Render() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnable(GL_DEPTH_TEST);
 
-	auto viewPos = glm::vec3(0.0f, 0.0f, 2.0f);
+	auto viewPos = glm::vec3(0.0f, 0.0f, imguiSettings_.cameraDistance);
 	viewPos = glm::rotate(viewPos, glm::radians(viewAngleV_), glm::vec3(1.0f, 0.0f, 0.0f));
 	viewPos = glm::rotate(viewPos, glm::radians(viewAngleH_), glm::vec3(0.0f, 1.0f, 0.0f));
 	auto view = glm::lookAt(viewPos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
@@ -550,7 +553,7 @@ void Render() {
 		glDrawArrays(GL_TRIANGLES, 0, numIntersectionTriangles_);
 	}
 
-	ImGui::ShowDemoWindow(nullptr);
+	//ImGui::ShowDemoWindow(nullptr);
 	RenderMenus();
 	ImGui::Render();
 	ImGui_ImplSdlGL3_RenderDrawData(ImGui::GetDrawData());
@@ -594,9 +597,14 @@ void MessagePump() {
 		case SDL_MOUSEMOTION:
 			if (!io.WantCaptureMouse && SDL_GetRelativeMouseMode())
 			{
-				viewAngleH_ += imguiSettings_.cameraSensitivity * event.motion.xrel;
-				viewAngleV_ += imguiSettings_.cameraSensitivity * event.motion.yrel;
+				viewAngleH_ += imguiSettings_.mouseSensitivity * event.motion.xrel;
+				viewAngleV_ += imguiSettings_.mouseSensitivity * event.motion.yrel;
 				viewAngleV_ = glm::clamp(viewAngleV_, -85.f, 85.f);
+			}
+			break;
+		case SDL_MOUSEWHEEL:
+			if (!io.WantCaptureMouse) {
+				imguiSettings_.cameraDistance += event.wheel.y * imguiSettings_.mouseWheelSensitivity;
 			}
 			break;
 		case SDL_KEYDOWN:
