@@ -338,6 +338,13 @@ void SetupGLState()
 	CreateVertexBuffers();
 	LoadTexture();
 
+	glClearColor(
+		imguiSettings_.backgroundColor.r,
+		imguiSettings_.backgroundColor.g,
+		imguiSettings_.backgroundColor.b,
+		imguiSettings_.backgroundColor.a
+	);
+
 	PostResizeGlSetup();
 }
 
@@ -375,9 +382,10 @@ void RenderMenus()
 			}
 		}
 
-		if (ImGui::CollapsingHeader("Pretty"))
-		{
-			ImGui::ColorPicker3("Background Color", (float*)&imguiSettings_.backgroundColor);
+		if (ImGui::CollapsingHeader("Pretty")) {
+			if (ImGui::ColorPicker3("Background Color", (float*)&imguiSettings_.backgroundColor)) {
+				glClearColor(imguiSettings_.backgroundColor.r, imguiSettings_.backgroundColor.g, imguiSettings_.backgroundColor.b, imguiSettings_.backgroundColor.a);
+			}
 		}
 
 		if (ImGui::CollapsingHeader("Draw"))
@@ -519,14 +527,7 @@ void UpdateIntersections(glm::mat4 modelView) {
 void Render() {
 	ImGui_ImplSdlGL3_NewFrame(window_);
 
-	glClearColor(
-		imguiSettings_.backgroundColor.r,
-		imguiSettings_.backgroundColor.g,
-		imguiSettings_.backgroundColor.b,
-		imguiSettings_.backgroundColor.a
-	);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glEnable(GL_DEPTH_TEST);
 
 	auto viewPos = glm::vec3(0.0f, 0.0f, imguiSettings_.cameraDistance);
 	viewPos = glm::rotate(viewPos, glm::radians(viewAngleV_), glm::vec3(1.0f, 0.0f, 0.0f));
@@ -548,6 +549,7 @@ void Render() {
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeIndexBuffer_);
 		glVertexAttribPointer(debugColorShader_.positionLoc, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
 		glUniformMatrix4fv(debugColorShader_.mvpLoc, 1, false, (GLfloat*)&mvp);
+		glEnable(GL_DEPTH_TEST);
 		glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, 0);
 	}
 	if (imguiSettings_.drawEdges) {
@@ -555,6 +557,7 @@ void Render() {
 		glBindBuffer(GL_ARRAY_BUFFER, edgesVertexBuffer_);
 		glVertexAttribPointer(debugColorShader_.positionLoc, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
 		glUniformMatrix4fv(debugColorShader_.mvpLoc, 1, false, (GLfloat*)&mvp);
+		glEnable(GL_DEPTH_TEST);
 		glDrawArrays(GL_LINES, 0, 24);
 	}
 	if (imguiSettings_.drawIntersectionGeometry) {
@@ -562,6 +565,7 @@ void Render() {
 		glBindBuffer(GL_ARRAY_BUFFER, intersectionTriangleBuffer_);
 		glVertexAttribPointer(debugColorShader_.positionLoc, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
 		glUniformMatrix4fv(debugColorShader_.mvpLoc, 1, false, (GLfloat*)&mvp);
+		glEnable(GL_DEPTH_TEST);
 		glDrawArrays(GL_TRIANGLES, 0, numIntersectionTriangles_);
 	}
 	if (imguiSettings_.drawIntersectionPoints) {
@@ -570,6 +574,7 @@ void Render() {
 		glVertexAttribPointer(debugColorShader_.positionLoc, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
 		glUniformMatrix4fv(debugColorShader_.mvpLoc, 1, false, (GLfloat*)&mvp);
 		glPointSize(10.0f);
+		glEnable(GL_DEPTH_TEST);
 		glDrawArrays(GL_POINTS, 0, numIntersectionPoints_);
 	}
 	if (imguiSettings_.drawTexturedVolume) {
@@ -674,3 +679,8 @@ int main(int argc, char** argv)
 
 	return 0;
 }
+
+// TODO the head is too wide, need to adjust size of cube to account for size of texture.
+// TODO the gl state for the volume has broken the debug modes, which relied on the initial state
+// TODO 1D transfer function editor to enable easier classification of data?
+// TODO Double check whether we should be scaling alpha in response to number of slices somehow.
