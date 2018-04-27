@@ -550,6 +550,7 @@ void Render() {
 		glVertexAttribPointer(debugColorShader_.positionLoc, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
 		glUniformMatrix4fv(debugColorShader_.mvpLoc, 1, false, (GLfloat*)&mvp);
 		glEnable(GL_DEPTH_TEST);
+		glDisable(GL_BLEND);
 		glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, 0);
 	}
 	if (imguiSettings_.drawEdges) {
@@ -558,6 +559,7 @@ void Render() {
 		glVertexAttribPointer(debugColorShader_.positionLoc, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
 		glUniformMatrix4fv(debugColorShader_.mvpLoc, 1, false, (GLfloat*)&mvp);
 		glEnable(GL_DEPTH_TEST);
+		glDisable(GL_BLEND);
 		glDrawArrays(GL_LINES, 0, 24);
 	}
 	if (imguiSettings_.drawIntersectionGeometry) {
@@ -566,6 +568,7 @@ void Render() {
 		glVertexAttribPointer(debugColorShader_.positionLoc, 3, GL_FLOAT, false, sizeof(glm::vec3), 0);
 		glUniformMatrix4fv(debugColorShader_.mvpLoc, 1, false, (GLfloat*)&mvp);
 		glEnable(GL_DEPTH_TEST);
+		glDisable(GL_BLEND);
 		glDrawArrays(GL_TRIANGLES, 0, numIntersectionTriangles_);
 	}
 	if (imguiSettings_.drawIntersectionPoints) {
@@ -575,6 +578,7 @@ void Render() {
 		glUniformMatrix4fv(debugColorShader_.mvpLoc, 1, false, (GLfloat*)&mvp);
 		glPointSize(10.0f);
 		glEnable(GL_DEPTH_TEST);
+		glDisable(GL_BLEND);
 		glDrawArrays(GL_POINTS, 0, numIntersectionPoints_);
 	}
 	if (imguiSettings_.drawTexturedVolume) {
@@ -585,9 +589,9 @@ void Render() {
 		glUniformMatrix4fv(texturedVolumeShader_.mvpLoc, 1, false, (GLfloat*)&mvp);
 		glUniform1f(texturedVolumeShader_.alphaThresholdLoc, imguiSettings_.alphaThreshold);
 		glUniform1f(texturedVolumeShader_.alphaScaleLoc, imguiSettings_.alphaScale);
+		glDisable(GL_DEPTH_TEST);
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glDisable(GL_DEPTH_TEST);
 		glDrawArrays(GL_TRIANGLES, 0, numIntersectionTriangles_);
 	}
 
@@ -681,6 +685,5 @@ int main(int argc, char** argv)
 }
 
 // TODO the head is too wide, need to adjust size of cube to account for size of texture.
-// TODO the gl state for the volume has broken the debug modes, which relied on the initial state
 // TODO 1D transfer function editor to enable easier classification of data?
 // TODO Double check whether we should be scaling alpha in response to number of slices somehow.
