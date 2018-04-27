@@ -35,7 +35,7 @@ struct {
 	float mouseSensitivity = 0.1f;
 	float mouseWheelSensitivity = 0.1f;
 	float cameraFov = 60.0f;
-	float cameraDistance = 2.0f;
+	float cameraDistance = 4.0f;
 	float alphaThreshold = 0.2f;
 	float alphaScale = 1.0f;
 	glm::vec4 backgroundColor = glm::vec4(0.15f, 0.15f, 0.20f, 1.0f);
@@ -534,9 +534,7 @@ void Render() {
 	viewPos = glm::rotate(viewPos, glm::radians(viewAngleH_), glm::vec3(0.0f, 1.0f, 0.0f));
 	auto view = glm::lookAt(viewPos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
-	auto scale = glm::scale(glm::mat4(), glm::vec3(0.5f));
-	auto translate = glm::translate(glm::mat4(), glm::vec3(0.0f, 0.0f, 0.0f));
-	auto modelView = view * translate * scale;
+	auto modelView = view * model_;
 
 	if(imguiSettings_.updateIntersections)
 		UpdateIntersections(modelView);
@@ -684,6 +682,5 @@ int main(int argc, char** argv)
 	return 0;
 }
 
-// TODO the head is too wide, need to adjust size of cube to account for size of texture.
 // TODO 1D transfer function editor to enable easier classification of data?
 // TODO Double check whether we should be scaling alpha in response to number of slices somehow.
