@@ -348,6 +348,28 @@ void SetupGLState()
 	PostResizeGlSetup();
 }
 
+void ReadTiffFrame(TinyTIFFReaderFile* tif, uint8_t* data) {
+	uint16_t sformat = TinyTIFFReader_getSampleFormat(tif);
+	uint16_t bits = TinyTIFFReader_getBitsPerSample(tif);
+	if (sformat == TINYTIFFREADER_SAMPLEFORMAT_UINT) {
+		if (bits == 8) TinyTIFFReader_readFrame<uint8_t, uint8_t>(tif, data);
+		else if (bits == 16) TinyTIFFReader_readFrame<uint16_t, uint8_t>(tif, data);
+		else if (bits == 32) TinyTIFFReader_readFrame<uint32_t, uint8_t>(tif, data);
+		else assert(false);
+	}
+	else if (sformat == TINYTIFFREADER_SAMPLEFORMAT_INT) {
+		if (bits == 8) TinyTIFFReader_readFrame<int8_t, uint8_t>(tif, data);
+		else if (bits == 16) TinyTIFFReader_readFrame<int16_t, uint8_t>(tif, data);
+		else if (bits == 32) TinyTIFFReader_readFrame<int32_t, uint8_t>(tif, data);
+		else assert(false);
+	}
+	else if (sformat == TINYTIFFREADER_SAMPLEFORMAT_FLOAT) {
+		if (bits == 32) TinyTIFFReader_readFrame<float, uint8_t>(tif, data);
+		else assert(false);
+	}
+	else assert(false);
+}
+
 using namespace std::experimental::filesystem;
 
 void LoadImageStack(path filepath) {
@@ -364,6 +386,7 @@ void LoadImageStack(path filepath) {
 			break;
 		}
 	}
+
 	int32_t width = -1;
 	int32_t height = -1;
 	for (int sliceIdx = 0; sliceIdx < sliceCount; sliceIdx++) {
@@ -371,6 +394,19 @@ void LoadImageStack(path filepath) {
 		auto redChannelPath = thisSliceChannelStart + "3.tiff";
 		auto greenChannelPath = thisSliceChannelStart + "2.tiff";
 		auto blueChannelPath = thisSliceChannelStart + "0.tiff";
+		auto redTiffFile = TinyTIFFReader_open(redChannelPath.c_str());
+		auto redFrameCount = TinyTIFFReader_countFrames(redTiffFile);
+		for (int frameIdx = 0; frameIdx < redFrameCount; frameIdx++) {
+			if (width < 0) width = TinyTIFFReader_getWidth(redTiffFile);
+			if (height < 0) height = TinyTIFFReader_getHeight(redTiffFile);
+			assert(width == TinyTIFFReader_getWidth(redTiffFile));
+			assert(height == TinyTIFFReader_getHeight(redTiffFile));
+			std::vector<uint8_t> frameData(width*height, 0.0f);
+			ReadTiffFrame(redTiffFile, frameData.data());
+			TinyTIFFReader_readNext(redTiffFile);
+		}
+		auto greenTiffFile = TinyTIFFReader_open(greenChannelPath.c_str());
+		auto blueTiffFile = TinyTIFFReader_open(blueChannelPath.c_str());
 	}
 	
 	auto ret = 0;

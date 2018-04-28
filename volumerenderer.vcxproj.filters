@@ -42,6 +42,9 @@
     <ClInclude Include="imgui\imgui_impl_sdl_gl3.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="tinytiffreader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -60,6 +63,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="imgui\imgui_impl_sdl_gl3.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="tinytiffreader.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

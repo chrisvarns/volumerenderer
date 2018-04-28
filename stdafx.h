@@ -27,4 +27,6 @@
 #include "glm/gtx/rotate_vector.hpp"
 #include "glm/gtx/vector_angle.hpp"
 
+#include "tinytiffreader.h"
+
 // TODO: reference additional headers your program requires here
