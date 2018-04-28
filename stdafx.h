@@ -8,14 +8,17 @@
 #include "Windows.h"
 #include "targetver.h"
 
-#include <stdio.h>
-#include <tchar.h>
-#include <assert.h>
 #include <array>
+#include <assert.h>
+#include <filesystem>
+#include <stdio.h>
 #include <string>
+#include <tchar.h>
 #include <vector>
 
 #include "sdl/SDL.h"
+
+#include "nfd/nfd.h"
 
 #include "glew/GL/glew.h"
 

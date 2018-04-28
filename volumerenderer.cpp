@@ -348,6 +348,34 @@ void SetupGLState()
 	PostResizeGlSetup();
 }
 
+using namespace std::experimental::filesystem;
+
+void LoadImageStack(path filepath) {
+	auto filename = filepath.filename();
+	auto filenameStr = filename.string();
+	auto sliceItr = filenameStr.find("slice");
+	auto filenameStart = filenameStr.substr(0, sliceItr + 5);
+	int sliceCount = 0;
+	while (true) {
+		auto toTest = filepath.parent_path() / path(filenameStart + std::to_string(sliceCount) + "_channel0.tiff");
+		if (exists(toTest)) {
+			sliceCount++;
+		} else {
+			break;
+		}
+	}
+	int32_t width = -1;
+	int32_t height = -1;
+	for (int sliceIdx = 0; sliceIdx < sliceCount; sliceIdx++) {
+		auto thisSliceChannelStart = (filepath.parent_path() / path(filenameStart + std::to_string(sliceIdx) + "_channel")).string();
+		auto redChannelPath = thisSliceChannelStart + "3.tiff";
+		auto greenChannelPath = thisSliceChannelStart + "2.tiff";
+		auto blueChannelPath = thisSliceChannelStart + "0.tiff";
+	}
+	
+	auto ret = 0;
+}
+
 void RenderMenus()
 {
 	ImGui::SetNextWindowPos(ImVec2(5, 5), ImGuiCond_Always, ImVec2(0, 0));
@@ -362,6 +390,14 @@ void RenderMenus()
 		{
 			if (ImGui::BeginMenu("Menu"))
 			{
+				if (ImGui::MenuItem("Load")) {
+					nfdchar_t* outPath;
+					auto result = NFD_OpenDialog(nullptr, nullptr, &outPath);
+					if (result == NFD_OKAY) {
+						std::experimental::filesystem::path path(outPath);
+						LoadImageStack(path);
+					}
+				}
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help"))
